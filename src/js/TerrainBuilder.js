@@ -58,6 +58,13 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 	// Initialize refs, state, and other variables
 	const [isSaving, setIsSaving] = useState(false);
 	
+	// Set skipNextSaveRef to true immediately at component mount
+	// This ensures the first auto-save after loading is skipped
+	useEffect(() => {
+		console.log("Setting lastSaveTimeRef to current time at component initialization");
+		lastSaveTimeRef.current = Date.now(); // Initialize to now, so first save will be delayed
+	}, []);
+	
 	// Helper function to ensure render cycle completion
 	const waitForRenderCycle = (callback) => {
 		return new Promise(resolve => {
@@ -118,10 +125,13 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 	// Also save when user navigates away
 	useEffect(() => {
 		const handleBeforeUnload = (event) => {
-			// If we have pending changes, save immediately and show warning
-			if (Object.keys(pendingChangesRef.current.added).length > 0 || 
-				Object.keys(pendingChangesRef.current.removed).length > 0) {
-				console.log("Saving terrain before page unload...");
+			// Check for unsaved changes in pendingChanges
+			const hasUnsavedChanges = 
+				Object.keys(pendingChangesRef.current.added).length > 0 || 
+				Object.keys(pendingChangesRef.current.removed).length > 0;
+				
+			if (hasUnsavedChanges) {
+				console.log("Detected unsaved changes before page unload...");
 				
 				// We can't use the async version for beforeunload, so use synchronous version
 				// This might cause a brief pause, but it's better than losing data
@@ -646,6 +656,7 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 									updateVisibleChunks();
 									
 									// Save terrain asynchronously after all chunks are loaded
+									// But only if this isn't the initial load (where we already set initialSaveCompleteRef.current = true)
 									setTimeout(() => {
 										efficientTerrainSave();
 									}, 100);
@@ -1450,6 +1461,11 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 		// Set terrain data immediately
 		terrainRef.current = terrainData;
 		
+		// Add all imported blocks to pending changes
+		Object.entries(terrainData).forEach(([posKey, blockId]) => {
+			pendingChangesRef.current.added[posKey] = blockId;
+		});
+		
 		// Start terrain update immediately for faster response
 		buildUpdateTerrain()
 			.then(() => {
@@ -1649,8 +1665,12 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 
 					if (savedTerrain) {
 						terrainRef.current = savedTerrain;
-						console.log("Terrain loaded from IndexedDB");
+						console.log(`Terrain loaded from IndexedDB: ${Object.keys(savedTerrain).length} blocks`);
 						totalBlocksRef.current = Object.keys(terrainRef.current).length;
+						
+						// Mark initial save as complete since we loaded from the database
+						initialSaveCompleteRef.current = true;
+						
 						buildUpdateTerrain(); // Build using chunked approach
 					} else {
 						console.log("No terrain found in IndexedDB");
@@ -1774,8 +1794,8 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 
 	// Function to manually save the terrain (can be called from parent or UI)
 	const saveTerrainManually = () => {
-		console.log("Manual save requested...");
-		return efficientTerrainSave();
+		console.log("Manual save triggered");
+		efficientTerrainSave();
 	};
 
 	// Helper function to enable/disable auto-save
@@ -1874,7 +1894,7 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 		/**
 		 * Force a DB reload of terrain and then rebuild it
 		 */
-		async refreshTerrainFromDB() {
+		async refreshTerrainFromDB(isFromImport = false) {
 			console.log("=== REFRESHING TERRAIN FROM DATABASE ===");
 			
 			// Show a single loading screen from start to finish
@@ -1917,6 +1937,13 @@ function TerrainBuilder({ onSceneReady, previewPositionToAppJS, currentBlockType
 						blocksArray.forEach(block => {
 							terrainRef.current[block.posKey] = block.blockId;
 						});
+						
+						// If this is from an import operation, add all blocks to pending changes
+						if (isFromImport && blocksArray.length > 0) {
+							blocksArray.forEach(block => {
+								pendingChangesRef.current.added[block.posKey] = block.blockId;
+							});
+						}
 						
 						// Update loading screen for terrain building
 						loadingManager.updateLoading(`Building terrain meshes...`, 20);

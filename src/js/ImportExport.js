@@ -115,7 +115,7 @@ export const importMap = async (file, terrainBuilderRef, environmentBuilderRef) 
           
           // Refresh terrain and environment builders
           if (terrainBuilderRef && terrainBuilderRef.current) {
-            await terrainBuilderRef.current.refreshTerrainFromDB();
+            await terrainBuilderRef.current.refreshTerrainFromDB(true);
           }
           
           if (environmentBuilderRef && environmentBuilderRef.current) {

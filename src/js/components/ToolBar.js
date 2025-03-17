@@ -859,10 +859,9 @@ const ToolBar = ({ terrainBuilderRef, mode, handleModeChange, axisLockEnabled, s
 					onClose={() => setShowMinecraftImportModal(false)}
 					onComplete={(result) => {
 						if (result && result.success) {
-							console.log('Minecraft map imported successfully:', result);
-							// The wizard already updates the terrain
+							console.log("Minecraft import completed successfully");
+							// The actual terrain update is handled inside the wizard
 						}
-						setShowMinecraftImportModal(false);
 					}}
 					terrainBuilderRef={terrainBuilderRef}
 				/>
